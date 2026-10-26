@@ -1,0 +1,33 @@
+; production, NVT at __TEMP__ K, 200 ns. Checkpoint/restart with -cpi.
+; Protein-only compressed trajectory every 10 ps (20,000 frames); energies every 10 ps.
+integrator      = md
+dt              = 0.002
+nsteps          = 100000000
+nstxout         = 0
+nstvout         = 0
+nstfout         = 0
+nstxout-compressed = 5000
+compressed-x-grps = Protein
+nstenergy       = 5000
+nstlog          = 50000
+nstcalcenergy   = 100
+continuation    = yes
+constraints     = h-bonds
+constraint-algorithm = lincs
+lincs-iter      = 1
+lincs-order     = 4
+cutoff-scheme   = Verlet
+nstlist         = 20
+rcoulomb        = 1.0
+rvdw            = 1.0
+coulombtype     = PME
+pme-order       = 4
+fourierspacing  = 0.12
+DispCorr        = EnerPres
+tcoupl          = V-rescale
+tc-grps         = Protein Non-Protein
+tau-t           = 0.1 0.1
+ref-t           = __TEMP__ __TEMP__
+pcoupl          = no
+pbc             = xyz
+gen-vel         = no

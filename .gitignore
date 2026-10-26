@@ -1,0 +1,29 @@
+# GROMACS run output: regenerate it, never commit it
+*.tpr
+*.trr
+*.xtc
+*.edr
+*.cpt
+*.gro
+*.log
+!data/raw/*.log
+#*#
+step*.pdb
+\#*
+
+# local scratch and build trees
+/build/
+/runs/
+/runs_*/
+*.tar.gz
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# patch files: they carry pre-scrub hostnames in their diff context
+*.patch
+*.orig
+*.rej

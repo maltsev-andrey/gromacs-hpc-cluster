@@ -1,0 +1,7 @@
+; only used by grompp to build ions.tpr for genion
+integrator  = steep
+nsteps      = 0
+cutoff-scheme = Verlet
+coulombtype = PME
+rcoulomb    = 1.0
+rvdw        = 1.0

@@ -1,0 +1,30 @@
+; per-temperature NVT equilibration, 1 ns at __TEMP__ K, restraints released,
+; velocities regenerated at the target temperature. Box fixed from the 300 K NPT run.
+integrator      = md
+dt              = 0.002
+nsteps          = 500000
+nstxout-compressed = 10000
+nstenergy       = 1000
+nstlog          = 10000
+continuation    = no
+constraints     = h-bonds
+constraint-algorithm = lincs
+lincs-iter      = 1
+lincs-order     = 4
+cutoff-scheme   = Verlet
+nstlist         = 20
+rcoulomb        = 1.0
+rvdw            = 1.0
+coulombtype     = PME
+pme-order       = 4
+fourierspacing  = 0.12
+DispCorr        = EnerPres
+tcoupl          = V-rescale
+tc-grps         = Protein Non-Protein
+tau-t           = 0.1 0.1
+ref-t           = __TEMP__ __TEMP__
+pcoupl          = no
+pbc             = xyz
+gen-vel         = yes
+gen-temp        = __TEMP__
+gen-seed        = -1
