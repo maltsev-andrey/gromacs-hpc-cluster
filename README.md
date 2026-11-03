@@ -127,6 +127,22 @@ Two lessons I'd carry anywhere:
 
 ---
 
+## Documentation
+
+The README is the summary. The chapters are the working record: method, every number, and what went wrong on the way.
+
+| Chapter | What is in it |
+|---|---|
+| [1. Project overview](docs/01-project-overview.md) | The cluster, the constraints it imposes, the software stack, benchmark methodology, a script index, results to date, and the running list of issues and lessons |
+| [2. Build and environment](docs/02-build-and-environment.md) | Two builds of GROMACS 2026.2 from one source: CUDA on the GPU host, CPU on NFS for the offline nodes. Host survey, SIMD and toolchain choices, 106/106 regression tests, and the analysis venv |
+| [3. Phase 1: GPU offload benchmarks](docs/03-phase1-gpu-benchmarks.md) | The P100 baseline on benchMEM and ADH at every offload level and 4 to 16 threads, energy per simulated nanosecond from RAPL plus board power, the fixed-grid control series, and how four disturbed runs were traced to their cause |
+| [4. Phase 2: CPU compute nodes](docs/04-phase2-cpu-nodes.md) | One VM against bare metal, then gmx_mpi across 1, 2 and 4 nodes over 1 GbE. Where PME breaks on this fabric, the ESXi oversubscription confound found afterwards, and the ensemble rule that follows |
+| [5. Phase 5: thermal stability of lysozyme](docs/05-phase5-thermal-stability.md) | Five 200 ns replicas from 300 to 450 K, 1 µs in total. RMSD, per-residue RMSF, radius of gyration and backbone H-bonds; why the loosening is local rather than global; and three analysis bugs that each produced confident wrong numbers first |
+
+Chapter 6 will cover the replicate run at 350 K.
+
+---
+
 ## Reproducing it
 
 ```bash

@@ -63,7 +63,16 @@ The two regions behave differently and the distinction is worth keeping:
 
 ### A hypothesis that did not survive
 
-Lysozyme has four disulfide bridges (6-127, 30-115, 64-80, 76-94), and the most mobile residues, 128 and 129, lie beyond the last one. The obvious hypothesis is that fluctuation is set by how far a residue sits from the nearest covalent anchor.
+Lysozyme has four disulfide bridges, and all four are present in this system, measured from the equilibrated structure:
+
+| Bridge | S-S distance |
+| --- | --- |
+| Cys6-Cys127 | 2.04 Å |
+| Cys30-Cys115 | 2.03 Å |
+| Cys64-Cys80 | 2.02 Å |
+| Cys76-Cys94 | 1.96 Å |
+
+The most mobile residues, 128 and 129, lie beyond the last of them. The obvious hypothesis is that fluctuation is set by how far a residue sits from the nearest covalent anchor.
 
 It is not. Spearman correlation between sequence distance to the nearest bridged cysteine and RMSF gain from 300 K to 450 K is **+0.046**, which is nothing. The longest unanchored stretch, Cys30 to Cys64 at 34 residues, gains only +0.08 nm, while the shorter Cys94 to Cys115 gains +0.33 nm. Sequence topology does not predict which parts loosen. Three-dimensional context does, and the free C-terminal tail fits the anchoring idea as a single case rather than a rule.
 
@@ -84,6 +93,4 @@ The lesson that generalises is the first one. Both wrong results were internally
 - **Constant volume.** Production was NVT with `pcoupl = no`, chosen so TIP3P would not superheat. The box is therefore frozen at its 300 K density, and the 450 K system sits under high pressure, which opposes expansion and unfolding. "Folded at 450 K" describes this ensemble, not dilute solution.
 - **200 ns is short.** Thermal denaturation takes far longer, so the absence of an unfolding event is weak evidence either way.
 - **One replica per temperature.** Enough for the core trends, which are smooth and monotonic, and not enough for the 101 to 107 loop or for the 325 K to 350 K step.
-- **Disulfides unverified.** The rigid core is consistent with the four bridges being present, but that was not confirmed in the topology. If `pdb2gmx` did not form them, the core's rigidity needs another explanation.
-
 The natural next step is three replicas at 350 K alone, which is both the experimental melting temperature and where the largest step appears. At 27 ns/day per node that is about a week of cluster time for a result the current data only hints at.
