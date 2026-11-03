@@ -2,7 +2,7 @@
 
 Measuring what each layer of hardware actually buys you in molecular dynamics, in ns/day **and** in energy per simulated nanosecond, on a 5-node RHEL cluster with one usable Tesla P100. Every number here is measured on that hardware, including the ones that contradicted my expectations.
 
-**The short version:** moving the whole MD step onto the GPU gives 8.6x the throughput of the same host's CPUs and uses 7.3x less energy per nanosecond. Spreading one simulation across multiple nodes over 1 GbE makes it *slower* than a single node, at every node count I tried. The practical consequence is ensembles, not domain decomposition.
+**The short version:** moving the whole MD step onto the GPU gives 8.6x the throughput of the same host's CPUs and uses 7.3x less energy per nanosecond. Spreading one simulation across multiple nodes over 1 GbE makes it *slower* than a single node, at every node count I tried. The practical consequence is ensembles, not domain decomposition. That rule then produced the science: five 200 ns lysozyme replicas from 300 K to 450 K, one microsecond in total, showing a fold that holds at every temperature while a quarter of the chain comes loose.
 
 ---
 
@@ -85,6 +85,31 @@ When PME runs on the CPU, the tuner saves you from a factor of two. When PME is 
 
 ---
 
+## Result 4: the fold holds to 450 K, but not uniformly
+
+![per-residue C-alpha fluctuation at five temperatures](images/lyso_rmsf.png)
+
+Five 200 ns replicas of lysozyme (PDB 1AKI) at 300, 325, 350, 400 and 450 K, one per temperature, built on the ensemble rule from Result 2.
+
+| Measure | 300 K | 450 K | against temperature |
+|---|---|---|---|
+| RMSD | 0.085 nm | 0.259 nm | linear, r² = 0.97 |
+| Radius of gyration | 1.415 nm | 1.399 nm | flat, 2% spread across the ladder |
+| Backbone H-bonds | 43.3 | 34.8 | linear, r² = 0.98 |
+| Rigid core, median RMSF | 0.052 nm | 0.090 nm | +73% |
+| Mobile regions, median RMSF | 0.072 nm | 0.341 nm | +376% |
+| Residues below 0.15 nm | 98% | 75% | |
+
+**Nothing unfolds.** Rg never leaves 1.39 to 1.42 nm; unfolding would carry it past 2 nm. RMSD and H-bond loss are both linear across 150 K with no cooperative step, which is progressive loosening rather than melting.
+
+**The loosening is local.** At 450 K three quarters of the chain is still as rigid as a folded protein, while the C-terminal tail and the loop at residues 101 to 107 take nearly all of the extra motion. Residue 129 reaches 0.726 nm, eight times the core median.
+
+A hypothesis that did not survive: lysozyme's four disulfide bridges do not predict this. Spearman correlation between sequence distance to the nearest bridged cysteine and RMSF gain is +0.046, essentially zero, and the longest unanchored stretch is among the least mobile.
+
+Caveats that matter: production was NVT at fixed volume, so the 450 K system sits under pressure that opposes unfolding; 200 ns is short for denaturation; and one replica per temperature is not enough for the loop statistics or for the 325 to 350 K step, which happens to sit next to lysozyme's experimental melting point. [Chapter 5](docs/05-phase5-thermal-stability.md) has the detail, including three analysis bugs that each produced confident wrong numbers first.
+
+---
+
 ## The measurement that wasn't
 
 Four of 60 runs in the overnight ADH matrix came in 30 to 50% below their own repeats. Same input, same settings, same card.
@@ -119,6 +144,14 @@ for n in 1 2 4; do sbatch -N $n scripts/bench/slurm_scaling.sh; done
 # 4. analysis: merges CSVs with the RAPL logs, writes summaries and charts
 python analysis/analyze_bench.py            # GPU matrices
 python analysis/analyze_cpu.py              # CPU nodes
+
+# 5. phase 4+5: lysozyme production, then structural analysis
+scripts/lysozyme/prep_lysozyme.sh           # PDB 1AKI -> solvated, equilibrated, one tpr per T
+for T in 300 325 350 400; do sbatch -J lyso-T$T --export=T=$T scripts/lysozyme/slurm_lyso_node.sh; done
+T=450 HOURS=8 scripts/lysozyme/run_lyso_gpu.sh      # GPU replica, nightly windows
+scripts/lysozyme/prep_analysis.sh           # protein-only topology + shared reference
+scripts/lysozyme/make_whole.sh              # gmx trjconv -pbc whole, required before analysis
+python analysis/analyze_lyso.py             # RMSD, RMSF, Rg, backbone H-bonds
 ```
 
 The two Python scripts need `pandas`, `matplotlib` and `numpy`, and Python 3.9 or newer:
@@ -139,10 +172,10 @@ All raw CSVs and power logs are in `data/`, so the charts and tables above can b
 ```
 scripts/build/      GROMACS builds: CUDA on the GPU host, CPU on NFS for offline nodes
 scripts/bench/      offload matrix + Slurm sweep and scaling jobs
-scripts/lysozyme/   phase 4: system prep from PDB 1AKI and the production runners
+scripts/lysozyme/   phases 4-5: system prep from PDB 1AKI, production runners, analysis prep
 analysis/           CSV + RAPL joiners, summary tables, charts
-data/               every measurement, raw power logs under data/raw/
-docs/               the long-form write-up, four chapters
+data/               every measurement, raw power logs under data/raw/, phase 5 under data/phase5/
+docs/               the long-form write-up, five chapters
 images/             the charts used above
 ```
 
@@ -156,10 +189,11 @@ images/             the charts used above
 | 1 | P100 offload matrices, both systems, energy, fixed-grid control | done, 108 runs |
 | 2 | CPU nodes: single-node sweep and 1/2/4-node scaling | done, 36 + 36 runs |
 | 3 | P100 vs V100 32GB comparison | postponed, card order cancelled |
-| 4 | Lysozyme (PDB 1AKI) thermal stability, 5 temperatures × 200 ns | running |
-| 5 | MDAnalysis: RMSD, RMSF, radius of gyration, H-bonds | next |
+| 4 | Lysozyme (PDB 1AKI) thermal stability, 5 temperatures × 200 ns | done, 1 µs total |
+| 5 | MDAnalysis: RMSD, RMSF, radius of gyration, H-bonds | done |
+| 6 | Three replicas at 350 K, to test the step next to the melting point | next |
 
-Phase 4 is live as of 25 Oct 2026: one GPU replica at 450 K in GPU-resident mode on 4 threads, four CPU replicas at 300/325/350/400 K, one per node. The design came straight out of phases 1 and 2 rather than from a guess.
+Phases 4 and 5 completed 2 Nov 2026: one GPU replica at 450 K in GPU-resident mode on 4 threads at 339 ns/day, four CPU replicas at 300/325/350/400 K at about 27 ns/day each, one per node. The layout came straight out of phases 1 and 2 rather than from a guess, and 100,005 frames of trajectory came back from it.
 
 ## License
 
