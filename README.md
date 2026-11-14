@@ -93,20 +93,51 @@ Five 200 ns replicas of lysozyme (PDB 1AKI) at 300, 325, 350, 400 and 450 K, one
 
 | Measure | 300 K | 450 K | against temperature |
 |---|---|---|---|
-| RMSD | 0.085 nm | 0.259 nm | linear, r² = 0.97 |
+| RMSD | 0.085 nm | 0.259 nm | *superseded, see Result 5* |
 | Radius of gyration | 1.415 nm | 1.399 nm | flat, 2% spread across the ladder |
 | Backbone H-bonds | 43.3 | 34.8 | linear, r² = 0.98 |
 | Rigid core, median RMSF | 0.052 nm | 0.090 nm | +73% |
 | Mobile regions, median RMSF | 0.072 nm | 0.341 nm | +376% |
 | Residues below 0.15 nm | 98% | 75% | |
 
-**Nothing unfolds.** Rg never leaves 1.39 to 1.42 nm; unfolding would carry it past 2 nm. RMSD and H-bond loss are both linear across 150 K with no cooperative step, which is progressive loosening rather than melting.
+**Nothing unfolds.** Rg never leaves 1.39 to 1.42 nm; unfolding would carry it past 2 nm. H-bond loss is linear across 150 K with no cooperative step, which is progressive loosening rather than melting. The RMSD column is left here as published and corrected in Result 5: those runs had not converged.
 
 **The loosening is local.** At 450 K three quarters of the chain is still as rigid as a folded protein, while the C-terminal tail and the loop at residues 101 to 107 take nearly all of the extra motion. Residue 129 reaches 0.726 nm, eight times the core median.
 
 A hypothesis that did not survive: lysozyme's four disulfide bridges do not predict this. Spearman correlation between sequence distance to the nearest bridged cysteine and RMSF gain is +0.046, essentially zero, and the longest unanchored stretch is among the least mobile.
 
 Caveats that matter: production was NVT at fixed volume, so the 450 K system sits under pressure that opposes unfolding; 200 ns is short for denaturation; and one replica per temperature is not enough for the loop statistics or for the 325 to 350 K step, which happens to sit next to lysozyme's experimental melting point. [Chapter 5](docs/05-phase5-thermal-stability.md) has the detail, including three analysis bugs that each produced confident wrong numbers first.
+
+---
+
+## Result 5: replication found the measurement window was too short
+
+![RMSD traces at 325 K and 350 K, and the convergence gap across the ladder](images/phase6_replication.png)
+
+Result 4's largest feature was a +68% RMSD step from 325 K to 350 K, next to lysozyme's experimental melting point. It rested on one trajectory per temperature. Phase 6 replicated both ends to n=3.
+
+| | 325 K | 350 K | step |
+|---|---|---|---|
+| Phase 5, n=1 | 0.0908 nm | 0.1529 nm | +68% |
+| Phase 6, n=3 | 0.1152 nm | 0.1495 nm | **+30%** |
+
+Explaining the difference mattered more than the number. At 325 K the three replicas sit together for 70 ns, then two cross to a higher state and stay while the third crosses and falls back. The published mean is a mixture of two well-defined states, not an equilibrium value, and each 200 ns run contains about one transition.
+
+That turned out to be general. Comparing each run's published mean against its own last 50 ns:
+
+| T (K) | published | last 50 ns | under-estimate |
+|---|---|---|---|
+| 300 | 0.0845 | 0.1104 | **31%** |
+| 325 | 0.1152 | 0.1273 | 11% |
+| 350 | 0.1496 | 0.1628 | 9% |
+| 400 | 0.1913 | 0.2095 | 9% |
+| 450 | 0.2590 | 0.2612 | 1% |
+
+**The 200 ns runs never reached a plateau, and how far short they fell depends on temperature.** T300 was still rising at +0.067 nm per 100 ns when it stopped. So part of what Result 4 reported as a thermal response in RMSD is the relaxation rate varying with temperature.
+
+What survives is the part measured on the current structure rather than against a fixed reference. Rg never leaves 1.389 to 1.415 nm anywhere, with under half a percent of bias, so **nothing unfolds** still holds. The backbone H-bond slope changes by 1%, and the 325 to 350 K interval is cleanly resolved there (−2.19, 95% CI [−2.96, −1.42], p = 0.0028).
+
+Phase 7 is therefore not more replicas, which would only pin down an artefact of the window. It is extending the existing runs, where the idle P100 does 200 ns in two nights against a node's 8.4 days. [Chapter 6](docs/06-phase6-replication.md) has the full account.
 
 ---
 
@@ -138,8 +169,9 @@ The README is the summary. The chapters are the working record: method, every nu
 | [3. Phase 1: GPU offload benchmarks](docs/03-phase1-gpu-benchmarks.md) | The P100 baseline on benchMEM and ADH at every offload level and 4 to 16 threads, energy per simulated nanosecond from RAPL plus board power, the fixed-grid control series, and how four disturbed runs were traced to their cause |
 | [4. Phase 2: CPU compute nodes](docs/04-phase2-cpu-nodes.md) | One VM against bare metal, then gmx_mpi across 1, 2 and 4 nodes over 1 GbE. Where PME breaks on this fabric, the ESXi oversubscription confound found afterwards, and the ensemble rule that follows |
 | [5. Phase 5: thermal stability of lysozyme](docs/05-phase5-thermal-stability.md) | Five 200 ns replicas from 300 to 450 K, 1 µs in total. RMSD, per-residue RMSF, radius of gyration and backbone H-bonds; why the loosening is local rather than global; and three analysis bugs that each produced confident wrong numbers first |
+| [6. Phase 6: what replication did to Chapter 5](docs/06-phase6-replication.md) | Replicating 325 K and 350 K to n=3: the +68% step is +30%, the 325 K replicas split between two states at 70 ns, and the 200 ns window turns out to be shorter than the process it measured. What stands, what does not, and why Phase 7 is extensions rather than replicas |
 
-Chapter 6 will cover the replicate run at 350 K.
+Chapter 7 will cover the extended runs.
 
 ---
 
@@ -190,8 +222,8 @@ scripts/build/      GROMACS builds: CUDA on the GPU host, CPU on NFS for offline
 scripts/bench/      offload matrix + Slurm sweep and scaling jobs
 scripts/lysozyme/   phases 4-5: system prep from PDB 1AKI, production runners, analysis prep
 analysis/           CSV + RAPL joiners, summary tables, charts
-data/               every measurement, raw power logs under data/raw/, phase 5 under data/phase5/
-docs/               the long-form write-up, five chapters
+data/               every measurement, raw power logs under data/raw/, phases 5 and 6 under data/phase5/ and data/phase6/
+docs/               the long-form write-up, six chapters
 images/             the charts used above
 ```
 
@@ -207,7 +239,8 @@ images/             the charts used above
 | 3 | P100 vs V100 32GB comparison | postponed, card order cancelled |
 | 4 | Lysozyme (PDB 1AKI) thermal stability, 5 temperatures × 200 ns | done, 1 µs total |
 | 5 | MDAnalysis: RMSD, RMSF, radius of gyration, H-bonds | done |
-| 6 | Three replicas at 350 K, to test the step next to the melting point | next |
+| 6 | Replication at 325 K and 350 K, n=3 each | done, 1.8 µs total |
+| 7 | Extend T300, T400 and T325 r1 on the GPU until they converge | next |
 
 Phases 4 and 5 completed 2 Nov 2026: one GPU replica at 450 K in GPU-resident mode on 4 threads at 339 ns/day, four CPU replicas at 300/325/350/400 K at about 27 ns/day each, one per node. The layout came straight out of phases 1 and 2 rather than from a guess, and 100,005 frames of trajectory came back from it.
 

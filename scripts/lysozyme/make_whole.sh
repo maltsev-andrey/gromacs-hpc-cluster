@@ -26,7 +26,7 @@ set -euo pipefail
 LYSO="/nfs/shared/gromacs/lyso"
 TOPOL="${LYSO}/common/protein.tpr"     # protein-only, 1960 atoms
 GMXRC="/nfs/shared/apps/gromacs/2026.2-cpu-avx2_256/bin/GMXRC"
-TEMPS="${TEMPS:-300 325 350 400 450}"
+RUNS="${RUNS:-}"                        # empty = discover every T*/run with a prod.xtc
 GROUP="System"                          # protein.tpr holds protein only
 # ------------------------------
 
@@ -38,33 +38,45 @@ export GMX_MAXBACKUP=-1
 
 [[ -f "${TOPOL}" ]] || { echo "missing ${TOPOL}: run prep_analysis.sh first"; exit 1; }
 
-for T in ${TEMPS}; do
-  in="${LYSO}/T${T}/run/prod.xtc"
-  out="${LYSO}/T${T}/run/prod_whole.xtc"
-  if [[ ! -f "${in}" ]]; then echo "T${T}: no ${in}, skipped"; continue; fi
-  if [[ -f "${out}" ]]; then echo "T${T}: ${out} exists, skipped"; continue; fi
-  echo "== T${T}"
+if [[ -z "${RUNS}" ]]; then
+  RUNS=$(find "${LYSO}" -maxdepth 3 -path '*/run/prod.xtc' 2>/dev/null \
+         | sed -E "s#^${LYSO}/##; s#/run/prod.xtc\$##" | sort)
+fi
+[[ -n "${RUNS}" ]] || { echo "no run directory under ${LYSO} holds prod.xtc"; exit 1; }
+echo "runs found: $(echo ${RUNS} | tr '\n' ' ')"
+echo
+
+for T in ${RUNS}; do
+  in="${LYSO}/${T}/run/prod.xtc"
+  out="${LYSO}/${T}/run/prod_whole.xtc"
+  if [[ ! -f "${in}" ]]; then echo "${T}: no ${in}, skipped"; continue; fi
+  if [[ -f "${out}" ]]; then echo "${T}: ${out} exists, skipped"; continue; fi
+  echo "== ${T}"
   printf '%s\n' "${GROUP}" | gmx trjconv -s "${TOPOL}" -f "${in}" -o "${out}" -pbc whole
 done
 
 echo
-echo "== check: Rg of the first frame, before and after"
-for T in ${TEMPS}; do
-  [[ -f "${LYSO}/T${T}/run/prod_whole.xtc" ]] || continue
-  printf '  T%-4s ' "${T}"
-  printf 'before '; printf '%s\n' "${GROUP}" | gmx gyrate -s "${TOPOL}" \
-      -f "${LYSO}/T${T}/run/prod.xtc" -o /tmp/g_before_${T}.xvg -b 0 -e 0 2>/dev/null \
-      | grep -oE 'Radius of gyration[^(]*' | head -1 || true
-  printf '        after  '; printf '%s\n' "${GROUP}" | gmx gyrate -s "${TOPOL}" \
-      -f "${LYSO}/T${T}/run/prod_whole.xtc" -o /tmp/g_after_${T}.xvg -b 0 -e 0 2>/dev/null \
-      | grep -oE 'Radius of gyration[^(]*' | head -1 || true
+echo "== check: Rg of the first frame after reassembly (expect ~1.40 nm)"
+for T in ${RUNS}; do
+  w="${LYSO}/${T}/run/prod_whole.xtc"
+  [[ -f "${w}" ]] || continue
+  xvg="$(mktemp)"
+  if printf '%s\n' "${GROUP}" | gmx gyrate -s "${TOPOL}" -f "${w}" -o "${xvg}" -b 0 -e 0 >/dev/null 2>&1 \
+     && [[ -s "${xvg}" ]]; then
+    printf '  %-10s %s\n' "${T}" "$(awk '!/^[@#]/{printf "%.3f nm", $2; exit}' "${xvg}")"
+  else
+    printf '  %-10s %s\n' "${T}" "gyrate unavailable, skipped"
+  fi
+  rm -f "${xvg}"
 done
+echo
 
 cat <<'NOTE'
 
-Expect roughly 1.4 nm after. If a value is still far above that, the molecule
-is not being reassembled: check that TOPOL really is the protein-only tpr and
-that its atom count matches the trajectory.
+Anything far above 1.40 nm means the molecule is not being reassembled: check
+that TOPOL really is the protein-only tpr and that its atom count matches the
+trajectory. analyze_lyso.py carries the same guard and will refuse to let a
+broken trajectory pass quietly.
 
 Then rerun the analysis; it reads prod_whole.xtc now.
 NOTE

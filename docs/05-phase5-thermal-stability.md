@@ -2,6 +2,14 @@
 
 *Andrey Maltsev · last updated 2 Nov 2026*
 
+> **Correction, 14 Nov 2026.** Phase 6 replicated 325 K and 350 K to n=3 and found that
+> the 200 ns runs in this chapter had not reached a plateau, by a margin that depends on
+> temperature (31% at 300 K, 1% at 450 K). **The RMSD figures below are not equilibrium
+> values and the +68% step from 325 K to 350 K is not supported** — it is +30% at n=3, and
+> even that compares two mixtures rather than two converged states. The radius of gyration
+> and backbone hydrogen-bond results are unaffected and stand as written. See
+> [Chapter 6](06-phase6-replication.md) for what changed and why.
+
 Five independent 200 ns replicas of hen egg-white lysozyme (PDB 1AKI) at 300, 325, 350, 400 and 450 K, analysed with MDAnalysis for RMSD, per-residue RMSF, radius of gyration and backbone hydrogen bonds. One microsecond of aggregate sampling, produced by the ensemble rule that came out of Chapter 4: one replica per node, plus the 450 K replica on the P100 in nightly GPU windows. The result in one line: the fold holds at every temperature, and what changes is *where* the protein is loose, not *whether* it is folded. Section 5.4 records three analysis bugs that each produced confident, wrong numbers before being caught.
 
 ## 5.1 What was measured

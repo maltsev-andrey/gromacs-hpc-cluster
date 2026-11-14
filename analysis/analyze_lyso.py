@@ -17,6 +17,7 @@ Run it with the analysis venv's interpreter by absolute path, e.g.
 """
 
 import os
+import re
 import sys
 import warnings
 from pathlib import Path
@@ -33,7 +34,12 @@ LYSO = Path("/nfs/shared/gromacs/lyso")
 # tpx 138 support; prep_analysis.sh builds it either way.
 TOPOL = LYSO / "common" / "ref_protein.gro"
 REF = LYSO / "common" / "ref_protein.gro"      # shared equilibrated reference
-TEMPS = [300, 325, 350, 400, 450]
+# Runs to analyse. A run is a directory name under LYSO: "T350" is the Phase 5
+# replica at 350 K, "T350_r2" a Phase 6 replica at the same temperature. Left
+# empty, every run directory holding the trajectory is discovered, so new
+# replicas need no edit here. Output files are named by run, so the Phase 5
+# filenames are unchanged.
+RUNS = []
 OUT = LYSO / "analysis"
 
 TRAJ = "prod_whole.xtc"   # written by make_whole.sh. The raw prod.xtc has the
@@ -72,8 +78,23 @@ from MDAnalysis.analysis.hydrogenbonds import HydrogenBondAnalysis as HBA
 A_TO_NM = 0.1         # MDAnalysis works in Angstrom; GROMACS convention is nm
 
 
-def load(T):
-    traj = LYSO / f"T{T}" / "run" / TRAJ
+def discover():
+    found = sorted(d.parent.name for d in LYSO.glob("T*/run") if (d / TRAJ).exists())
+    return found
+
+
+def temp_of(run):
+    m = re.match(r"T(\d+)", run)
+    return int(m.group(1)) if m else None
+
+
+def replica_of(run):
+    m = re.search(r"_r(\d+)$", run)
+    return int(m.group(1)) if m else 1
+
+
+def load(R):
+    traj = LYSO / R / "run" / TRAJ
     if not traj.exists():
         alt = traj.parent / "prod.xtc"
         hint = "  (prod.xtc is there: run make_whole.sh first)" if alt.exists() else ""
@@ -86,7 +107,7 @@ def load(T):
     return u, None
 
 
-def per_replica(T, u, ref):
+def per_replica(R, u, ref):
     """Returns (timeseries DataFrame, rmsf DataFrame, note)."""
     sel = u.select_atoms(SEL_FIT)
     if len(sel) == 0:
@@ -149,12 +170,13 @@ def dt_ps(u):
     return float(u.trajectory.dt)
 
 
-def summarise(T, ts):
+def summarise(R, ts):
     """Averages over the equilibrated portion only."""
     keep = ts[ts["time_ps"] >= EQUIL_NS * 1000]
     if keep.empty:
         keep = ts
-    row = {"T_K": T, "n_frames": len(ts), "n_frames_used": len(keep),
+    row = {"run": R, "T_K": temp_of(R), "replica": replica_of(R),
+           "n_frames": len(ts), "n_frames_used": len(keep),
            "equil_discarded_ns": EQUIL_NS}
     for col, label in (("rmsd_nm", "rmsd"), ("rg_nm", "rg"), ("hbonds", "hbonds")):
         if col in keep:
@@ -172,31 +194,34 @@ def main():
     ref = mda.Universe(str(TOPOL), str(REF))
 
     rows, series, rmsfs = [], {}, {}
-    for T in TEMPS:
+    runs = RUNS or discover()
+    if not runs:
+        sys.exit(f"no run directory under {LYSO} holds {TRAJ}. Run make_whole.sh first.")
+    for T in runs:
         u, err = load(T)
         if err:
-            print(f"T{T}: skipped, {err}")
+            print(f"{T}: skipped, {err}")
             continue
         prot, ca = len(u.select_atoms("protein")), len(u.select_atoms(SEL_FIT))
-        print(f"T{T}: {len(u.atoms)} atoms ({prot} matched 'protein', {ca} C-alpha), "
+        print(f"{T}: {len(u.atoms)} atoms ({prot} matched 'protein', {ca} C-alpha), "
               f"{u.trajectory.n_frames} frames, dt {dt_ps(u):.0f} ps", flush=True)
         if prot < len(u.atoms):
             print(f"      note: {len(u.atoms) - prot} atoms did not match 'protein'. "
                   "Check for non-standard residue names (HID/HIE/HIP, termini).")
         ts, rmsf, err = per_replica(T, u, ref)
         if err:
-            print(f"T{T}: skipped, {err}")
+            print(f"{T}: skipped, {err}")
             continue
-        ts.to_csv(OUT / f"timeseries_T{T}.csv", index=False)
-        rmsf.to_csv(OUT / f"rmsf_T{T}.csv", index=False)
+        ts.to_csv(OUT / f"timeseries_{T}.csv", index=False)
+        rmsf.to_csv(OUT / f"rmsf_{T}.csv", index=False)
         series[T], rmsfs[T] = ts, rmsf
         rows.append(summarise(T, ts))
 
     if not rows:
         sys.exit("nothing analysed")
 
-    summary = pd.DataFrame(rows).round(4)
-    summary.to_csv(OUT / "summary_by_temperature.csv", index=False)
+    summary = pd.DataFrame(rows).round(4).sort_values(["T_K", "replica"])
+    summary.to_csv(OUT / "summary_by_run.csv", index=False)
     print("\n== averages over the equilibrated portion "
           f"(first {EQUIL_NS:g} ns discarded) ==")
     print(summary.to_string(index=False))
@@ -208,8 +233,9 @@ def main():
 def charts(series, rmsfs, summary):
     cmap = plt.get_cmap("coolwarm")
     temps = sorted(series)
-    colour = {T: cmap((T - min(temps)) / max(1, (max(temps) - min(temps))))
-              for T in temps}
+    tk = {T: (temp_of(T) or 0) for T in temps}
+    lo, hi = min(tk.values()), max(tk.values())
+    colour = {T: cmap((tk[T] - lo) / max(1, hi - lo)) for T in temps}
 
     # 1. three traces against time, one row each
     panels = [("rmsd_nm", "RMSD vs equilibrated structure (nm)"),
@@ -221,7 +247,7 @@ def charts(series, rmsfs, summary):
             d = series[T].dropna(subset=[col])
             if d.empty:
                 continue
-            ax.plot(d["time_ps"] / 1000, d[col], lw=0.7, color=colour[T], label=f"{T} K")
+            ax.plot(d["time_ps"] / 1000, d[col], lw=0.7, color=colour[T], label=T)
         ax.axvspan(0, EQUIL_NS, color="0.9", zorder=0)
         ax.set_ylabel(label, fontsize=9)
         ax.grid(alpha=.3)
@@ -235,7 +261,7 @@ def charts(series, rmsfs, summary):
     # 2. per-residue RMSF, overlaid
     fig, ax = plt.subplots(figsize=(11, 4))
     for T in temps:
-        ax.plot(rmsfs[T]["resid"], rmsfs[T]["rmsf_nm"], lw=1, color=colour[T], label=f"{T} K")
+        ax.plot(rmsfs[T]["resid"], rmsfs[T]["rmsf_nm"], lw=1, color=colour[T], label=T)
     ax.set_xlabel("residue"); ax.set_ylabel("C$\\alpha$ RMSF (nm)")
     ax.set_title("Per-residue fluctuation: which parts of the fold go first", fontsize=10)
     ax.legend(ncol=len(temps), fontsize=8); ax.grid(alpha=.3)
