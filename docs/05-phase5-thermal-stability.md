@@ -9,6 +9,15 @@
 > even that compares two mixtures rather than two converged states. The radius of gyration
 > and backbone hydrogen-bond results are unaffected and stand as written. See
 > [Chapter 6](06-phase6-replication.md) for what changed and why.
+>
+> **Second correction, 17 Nov 2026.** Phase 7 extended four runs and found the cause. Every
+> run at 300 to 350 K leaves its starting conformation through loop 100 to 117, after a
+> waiting time that shortens with temperature. **The RMSD row and its linear fit in section
+> 5.2 describe those waiting times, not an equilibrium response.** On the last 50 ns of every
+> run the step from 325 K to 350 K is +7% and not significant. The converged ladder is the
+> core-only RMSD in [Chapter 7](07-phase7-convergence.md), section 7.5. The conclusions that
+> the fold holds to 450 K and that the loosening is local stand, and loop 101 to 107, the
+> RMSF hotspot of section 5.3, is where the switch happens.
 
 Five independent 200 ns replicas of hen egg-white lysozyme (PDB 1AKI) at 300, 325, 350, 400 and 450 K, analysed with MDAnalysis for RMSD, per-residue RMSF, radius of gyration and backbone hydrogen bonds. One microsecond of aggregate sampling, produced by the ensemble rule that came out of Chapter 4: one replica per node, plus the 450 K replica on the P100 in nightly GPU windows. The result in one line: the fold holds at every temperature, and what changes is *where* the protein is loose, not *whether* it is folded. Section 5.4 records three analysis bugs that each produced confident, wrong numbers before being caught.
 

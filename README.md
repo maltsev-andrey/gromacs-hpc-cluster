@@ -16,7 +16,7 @@ Measuring what each layer of hardware actually buys you in molecular dynamics, i
 
 All VMs share one ESXi host: 2 × Xeon E5-2696 v3, 36 physical cores, 72 threads, 256 GB. That matters for the multi-node results below.
 
-The V100 is reserved for a RAG assistant that runs permanently, so all GPU work here uses the P100. GROMACS 2026.2, CUDA 12.4, driver 550, AVX2_256, pinned for the whole study.
+The V100 is reserved for a RAG assistant that runs permanently, so the GPU work in phases 1 to 6 uses the P100. Phase 7 shares the V100 with it, since GROMACS needs only about 330 MiB of its memory. GROMACS 2026.2, CUDA 12.4, driver 550, AVX2_256, pinned for the whole study.
 
 Two benchmark systems: **benchMEM** (81,743 atoms, the MPI-NAT standard) and **ADH dodec** (95,561 atoms, from the GROMACS developers' own set, rebuilt with `gmx grompp` 2026.2).
 
@@ -93,7 +93,7 @@ Five 200 ns replicas of lysozyme (PDB 1AKI) at 300, 325, 350, 400 and 450 K, one
 
 | Measure | 300 K | 450 K | against temperature |
 |---|---|---|---|
-| RMSD | 0.085 nm | 0.259 nm | *superseded, see Result 5* |
+| RMSD | 0.085 nm | 0.259 nm | *superseded, see Results 5 and 6* |
 | Radius of gyration | 1.415 nm | 1.399 nm | flat, 2% spread across the ladder |
 | Backbone H-bonds | 43.3 | 34.8 | linear, r² = 0.98 |
 | Rigid core, median RMSF | 0.052 nm | 0.090 nm | +73% |
@@ -141,6 +141,41 @@ Phase 7 is therefore not more replicas, which would only pin down an artefact of
 
 ---
 
+## Result 6: the RMSD ladder was a clock, not a thermometer
+
+![three readings of the same temperature ladder](images/phase7_core_ladder.png)
+
+Phase 7 continued four runs from their checkpoints: 300 K to 600 ns, 325 K replica 1, 400 K and 450 K to 400 ns. One more microsecond, 2.8 µs in total.
+
+| Run | 5 to 200 ns (published) | last 50 ns | |
+|---|---|---|---|
+| 300 K | 0.085 nm | 0.141 nm | two steps, at 160 and 340 ns, then flat for 250 ns |
+| 325 K, replica 1 | 0.091 nm | 0.160 nm | flat for 290 ns, then one jump |
+| 400 K | 0.191 nm | 0.240 nm | |
+| 450 K | 0.259 nm | 0.251 nm | |
+
+**Every run at 300 to 350 K leaves its starting conformation through the same loop, residues 100 to 117.** It ends in one of two defined forms, and two independent runs at different temperatures land on the same one to within 0.003 nm at the leading residue. What temperature sets is the waiting time: 162 ns at 300 K, 70 to 292 ns at 325 K, under 60 ns at 350 K, under 6 ns above that. A 200 ns window caught some runs before the switch and some after it, and that mixture is what Results 4 and 5 read as a temperature response.
+
+![state of the loop in every run over time](images/phase7_loop_states.png)
+
+Fitting on residues 1 to 99 only takes the loop out of the measurement:
+
+| T | core RMSD, last 50 ns | whole protein, last 50 ns | runs |
+|---|---|---|---|
+| 300 K | 0.070 nm | 0.141 nm | 1 |
+| 325 K | 0.080 ± 0.010 | 0.153 ± 0.007 | 3 |
+| 350 K | 0.092 ± 0.015 | 0.163 ± 0.008 | 3 |
+| 400 K | 0.100 nm | 0.240 nm | 1 |
+| 450 K | 0.122 nm | 0.251 nm | 1 |
+
+**The core response is small, smooth and converged**: about 0.004 nm per 10 K, and the mean over 5 to 200 ns agrees with the last 50 ns within about 10% everywhere. The whole protein falls into two groups instead, separated by the loop going from a defined form to an open one. The +68% step of Result 4, already +30% in Result 5, is +7% here and not significant.
+
+Limits: 300, 400 and 450 K are single runs; one run in this set was flat for 290 ns and then jumped, so a plateau is evidence and not proof; and whether the two loop forms exist in solution or come from the force field is open. The region is known to be mobile in experiment, which fits but does not settle it. [Chapter 7](docs/07-phase7-convergence.md) has the detail.
+
+Phase 7 also gave the GPU comparison that Phase 3 was meant to be: the V100 16GB runs this system at 627 ns/day against 339 on the P100. Running both cards at once first cost 15% on one and almost half on the other, because with hyperthreading on, `-pinoffset 4` put the second job on two cores of the first.
+
+---
+
 ## The measurement that wasn't
 
 Four of 60 runs in the overnight ADH matrix came in 30 to 50% below their own repeats. Same input, same settings, same card.
@@ -170,8 +205,7 @@ The README is the summary. The chapters are the working record: method, every nu
 | [4. Phase 2: CPU compute nodes](docs/04-phase2-cpu-nodes.md) | One VM against bare metal, then gmx_mpi across 1, 2 and 4 nodes over 1 GbE. Where PME breaks on this fabric, the ESXi oversubscription confound found afterwards, and the ensemble rule that follows |
 | [5. Phase 5: thermal stability of lysozyme](docs/05-phase5-thermal-stability.md) | Five 200 ns replicas from 300 to 450 K, 1 µs in total. RMSD, per-residue RMSF, radius of gyration and backbone H-bonds; why the loosening is local rather than global; and three analysis bugs that each produced confident wrong numbers first |
 | [6. Phase 6: what replication did to Chapter 5](docs/06-phase6-replication.md) | Replicating 325 K and 350 K to n=3: the +68% step is +30%, the 325 K replicas split between two states at 70 ns, and the 200 ns window turns out to be shorter than the process it measured. What stands, what does not, and why Phase 7 is extensions rather than replicas |
-
-Chapter 7 will cover the extended runs.
+| [7. Phase 7: what longer runs showed](docs/07-phase7-convergence.md) | Four runs continued from their checkpoints, 2.8 µs in total. The RMSD ladder turns out to record when loop 100 to 117 switches, not how far the fold loosens; the loop has two end states; a core-only RMSD gives the converged ladder. Also two GPUs on one host and the pinning fault that came with it |
 
 ---
 
@@ -200,6 +234,14 @@ T=450 HOURS=8 scripts/lysozyme/run_lyso_gpu.sh      # GPU replica, nightly windo
 scripts/lysozyme/prep_analysis.sh           # protein-only topology + shared reference
 scripts/lysozyme/make_whole.sh              # gmx trjconv -pbc whole, required before analysis
 python analysis/analyze_lyso.py             # RMSD, RMSF, Rg, backbone H-bonds
+
+# 6. phase 7: continue a run from its checkpoint, then the loop and core analysis
+RUN=T300 UNTIL_NS=600 HOURS=8 CARD=A scripts/lysozyme/extend_lyso_gpu.sh
+scripts/lysozyme/lyso_eta.sh                # progress and running time left, read-only
+scripts/lysozyme/make_whole.sh && python analysis/analyze_lyso.py
+python analysis/analyze_transition.py       # which residues move across the RMSD step
+python analysis/analyze_core.py             # core, loop and tail separately
+python analysis/make_phase7_figs.py         # the three Chapter 7 figures
 ```
 
 The two Python scripts need `pandas`, `matplotlib` and `numpy`, and Python 3.9 or newer:
@@ -220,10 +262,10 @@ All raw CSVs and power logs are in `data/`, so the charts and tables above can b
 ```
 scripts/build/      GROMACS builds: CUDA on the GPU host, CPU on NFS for offline nodes
 scripts/bench/      offload matrix + Slurm sweep and scaling jobs
-scripts/lysozyme/   phases 4-5: system prep from PDB 1AKI, production runners, analysis prep
+scripts/lysozyme/   phases 4-7: system prep from PDB 1AKI, production runners, extension, analysis prep
 analysis/           CSV + RAPL joiners, summary tables, charts
-data/               every measurement, raw power logs under data/raw/, phases 5 and 6 under data/phase5/ and data/phase6/
-docs/               the long-form write-up, six chapters
+data/               every measurement, raw power logs under data/raw/, phases 5 to 7 under data/phase5/, data/phase6/ and data/phase7/
+docs/               the long-form write-up, seven chapters
 images/             the charts used above
 ```
 
@@ -236,11 +278,11 @@ images/             the charts used above
 | 0 | Build and verify on both targets | done, 106/106 regression tests |
 | 1 | P100 offload matrices, both systems, energy, fixed-grid control | done, 108 runs |
 | 2 | CPU nodes: single-node sweep and 1/2/4-node scaling | done, 36 + 36 runs |
-| 3 | P100 vs V100 32GB comparison | postponed, card order cancelled |
+| 3 | P100 vs V100 32GB comparison | card order cancelled; the V100 16GB was measured in Phase 7 instead, 627 against 339 ns/day |
 | 4 | Lysozyme (PDB 1AKI) thermal stability, 5 temperatures × 200 ns | done, 1 µs total |
 | 5 | MDAnalysis: RMSD, RMSF, radius of gyration, H-bonds | done |
 | 6 | Replication at 325 K and 350 K, n=3 each | done, 1.8 µs total |
-| 7 | Extend T300, T400 and T325 r1 on the GPU until they converge | next |
+| 7 | Extend T300, T325 r1, T400 and T450 from their checkpoints; loop and core analysis | done, 2.8 µs total |
 
 Phases 4 and 5 completed 2 Nov 2026: one GPU replica at 450 K in GPU-resident mode on 4 threads at 339 ns/day, four CPU replicas at 300/325/350/400 K at about 27 ns/day each, one per node. The layout came straight out of phases 1 and 2 rather than from a guess, and 100,005 frames of trajectory came back from it.
 

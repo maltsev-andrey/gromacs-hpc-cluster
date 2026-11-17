@@ -2,6 +2,12 @@
 
 *Andrey Maltsev · last updated 14 Nov 2026*
 
+> **Follow-up, 17 Nov 2026.** Phase 7 ran the extensions proposed in section 6.5. The two
+> states at 325 K are the starting conformation and a switched loop (residues 100 to 117),
+> and replica 1 was not an outlier: it switched at 292 ns instead of 70. The hydrogen-bond
+> difference between 325 K and 350 K survives at −1.57 on the last 50 ns (p = 0.019). The
+> RMSD step between them does not: +7%, p = 0.17. See [Chapter 7](07-phase7-convergence.md).
+
 Chapter 5 reported a +68% jump in mean RMSD between 325 K and 350 K, the largest step in the ladder and conveniently close to lysozyme's experimental melting point of about 345 K. It rested on one trajectory per temperature. Phase 6 replicated both ends to n=3, 200 ns each, to find out whether the step was real.
 
 It is smaller than reported, and finding out why exposed something that matters more than the step: **the 200 ns runs never reached a plateau, and how far short they fell depends on temperature.** Mean RMSD over the published window is therefore not an equilibrium property, and part of what Chapter 5 presented as a thermal response is the relaxation rate varying with temperature.
